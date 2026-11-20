@@ -99,6 +99,66 @@ kubectl get service
 kubectl describe service web
 ```
 
+#### Deployment 与 Service 如何连接：`web` 示例
+
+前面的 Deployment 在 Pod 模板中声明 `app: web`；因此它创建的每个 Pod 都带有这个标签。Service 不引用 Deployment 名称，而是用 `selector: app: web` 查找所有匹配的 Pod。
+
+```text
+Deployment web
+  └─ Pod template labels: app=web
+       └─ web-abc12、web-def34、web-ghi56
+          labels: app=web
+
+Service web
+  └─ selector: app=web
+       └─ 自动发现上述 Pod，作为后端
+```
+
+下面是一份完整清单。保存为 `web.yaml` 后执行 `kubectl apply -f web.yaml`；`---` 表示同一个 YAML 文件中定义两个 Kubernetes 对象。
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80
+```
+
+关键连接是两个位置的 `app: web`：Deployment 的 `template.metadata.labels` 给 Pod 打标签；Service 的 `selector` 找到同一标签。Deployment 的 `spec.selector.matchLabels` 也必须与 Pod 模板标签一致，才能管理这些 Pod。
+
+集群内其他 Pod 访问 `http://web` 时，请求先到 Service，再由 Service 转发给任意一个匹配的 `web` Pod。它不需要知道 Pod IP。
+
+```text
+客户端 Pod → http://web:80 → Service web → 任意一个 app=web 的 Pod:80
+```
+
+若 `web-def34` 挂掉，Deployment 会创建一个同样带 `app=web` 标签的新 Pod；Service 自动发现新 Pod，客户端地址保持不变。反之，若 Service 的 selector 写成 `app: api`，它找不到这些 `app=web` Pod，就没有可转发的后端。
+
 ### Namespace 与 Node
 
 **[Source-derived · SRC-11]** Namespace 逻辑隔离集群资源；Node 是实际承载 Pod 的工作机器。证据见 [验证记录](07-verification-record.md#src-11)。
