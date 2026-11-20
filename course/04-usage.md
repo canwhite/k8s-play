@@ -14,7 +14,7 @@
 
 本练习分为两层：Deployment、Service、EndpointSlice 与 rollout 可在普通 Kubernetes 练习集群验证；Gateway 的公网 HTTPS 入口还需要已安装 Gateway API 和 Gateway Controller、实际可用的 GatewayClass、将 `app.example.com` 指向 Gateway 的 DNS，以及该域名的有效 TLS 证书。
 
-在继续前，创建或选择自己的练习 Namespace（下文使用 `app`）。准备好 `app.example.com` 的证书文件与私钥文件后，创建 Gateway 要引用的 TLS Secret：
+在继续前，为本次练习新建专用 Namespace（下文使用 `app`）；不得选择、复用或清理已有 Namespace。若 `kubectl create namespace app` 报 `AlreadyExists`，立即停止：选择新的专用 Namespace，并将下文清单和命令中的 `app` 一并替换为该名称。准备好 `app.example.com` 的证书文件与私钥文件后，创建 Gateway 要引用的 TLS Secret：
 
 ```bash
 kubectl create namespace app
@@ -24,7 +24,7 @@ kubectl create secret tls app-example-com-tls \
   --key=/安全位置/app.example.com.key
 ```
 
-该命令创建类型为 `kubernetes.io/tls` 的 Secret，包含该域名的 `tls.crt` 与 `tls.key`。若 `app` Namespace 已存在，第一条命令会报错，可跳过；若要替换已存在的 Secret，先确认它不被其他工作负载使用，再按证书来源的轮换流程更新。不要把私钥、Base64 编码内容、证书/私钥文件或 Secret YAML 提交到仓库、终端记录或课程文档。
+该命令创建类型为 `kubernetes.io/tls` 的 Secret，包含该域名的 `tls.crt` 与 `tls.key`。`kubectl create secret tls` 仅用于首次创建；若同名 Secret 已存在，先确认它不被其他工作负载使用，再按证书来源的轮换流程更新。不要把私钥、Base64 编码内容、证书/私钥文件或 Secret YAML 提交到仓库、终端记录或课程文档。
 
 ## 练习清单
 
@@ -186,9 +186,18 @@ kubectl describe httproute web-route -n app
 kubectl delete -f web-gateway.yaml
 ```
 
-该命令只删除清单中的 Deployment、Service、Gateway 与 HTTPRoute，不删除练习 Namespace 或 TLS Secret。若不再需要 `app-example-com-tls`，请按证书来源和保留策略单独处理，避免删除其他工作负载使用的证书。
+该命令直接删除清单中的 Deployment、Service、Gateway 与 HTTPRoute。Gateway Controller 可能异步变更或释放其管理的外部地址、负载均衡器、监听器及相关基础设施；因此在删除专用 Namespace 前，先确认 Gateway 已消失，并按所用 Controller 的方式确认外部入口已收敛。DNS 仍指向旧 Gateway 地址时，外部访问会失败。
 
-**[Source-derived · SRC-26]** `kubectl delete -f` 删除由该文件定义的资源。证据见 [验证记录](07-verification-record.md#src-26)。执行后可运行 `kubectl get deployment,service,gateway,httproute -n app`，确认练习对象不再存在。
+确认无须保留证书和 Namespace 后，再删除本练习专用 Namespace；这会一并删除其中的 TLS Secret：
+
+```bash
+kubectl get gateway public-gateway -n app
+kubectl delete namespace app
+```
+
+第一条命令应返回 `NotFound`，才执行第二条命令。若证书或 Namespace 需要保留，应停止在 `kubectl delete -f web-gateway.yaml`，并按证书来源和保留策略单独处理 TLS Secret。
+
+**[Source-derived · SRC-26]** `kubectl delete -f` 删除由该文件定义的资源。证据见 [验证记录](07-verification-record.md#src-26)。清理完成后可运行 `kubectl get namespace app`，确认专用练习 Namespace 不再存在。
 
 ## 完成检查
 
